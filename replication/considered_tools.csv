@@ -1,0 +1,5 @@
+tool, type of merge, validated by, principal publication, public code base
+JDime, fully structured, multiple authors in multiple studies, https://doi.org/10.1145/2351676.2351694, https://github.com/se-sic/jdime
+AutoMerge (with improved tree matching), fully structured (based on JDime), only initial study, https://doi.org/10.1109/ICSE-Companion.2019.00117, https://github.com/thufv/automerge
+IntelliMerge, semistructured, only initial study, https://doi.org/10.1145/3361529, https://github.com/Symbolk/IntelliMerge (closed source since 2020)
+jFSTMerge, semistructured, multiple authors in multiple studies, https://doi.org/10.1145/3133883, https://github.com/guilhermejccavalcanti/jFSTMerge

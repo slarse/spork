@@ -8,6 +8,8 @@ The thesis is freely available.
 ## Directory overview
 The following results files are available in this directory:
 
+* [considered_tools.csv](considered_tools.csv)
+    - A table of the merge tools considered for the evaluation
 * [candidate_projects.txt](candidate_projects.txt)
     - A list of candidate projects, as described in section 6.2 of the thesis.
 * [buildable_candidates.txt](buildable_candidates.txt)
