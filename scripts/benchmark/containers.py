@@ -144,6 +144,23 @@ class MergeEvaluation:
     conflict_size: int
     runtime: float
 
+@dataclasses.dataclass(frozen=True, order=True)
+class NamedMergeEvaluation:
+    project: str
+    merge_dir: pathlib.Path
+    merge_commit: str
+    base_blob: str
+    left_blob: str
+    right_blob: str
+    expected_blob: str
+    replayed_blob: str
+    merge_cmd: str
+    outcome: str
+    git_diff_size: int
+    num_conflicts: int
+    conflict_size: int
+    runtime: float
+
 
 class Revision(enum.Enum):
     BASE = enum.auto()

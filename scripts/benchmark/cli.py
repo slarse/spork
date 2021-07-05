@@ -75,9 +75,7 @@ def create_cli_parser():
         type=str,
     )
 
-    base_output_parser = argparse.ArgumentParser(
-        add_help=False, parents=[base_parser]
-    )
+    base_output_parser = argparse.ArgumentParser(add_help=False, parents=[base_parser])
     base_output_parser.add_argument(
         "-n",
         "--num-merges",
@@ -205,8 +203,7 @@ def create_cli_parser():
     )
     merge_extractor_command.add_argument(
         "--non-trivial",
-        help="Extract only non-trivial merges. Implies "
-        "--skip-non-content-conflicts",
+        help="Extract only non-trivial merges. Implies " "--skip-non-content-conflicts",
         action="store_true",
     )
     merge_extractor_command.add_argument(
@@ -256,6 +253,27 @@ def create_cli_parser():
         type=float,
         required=True,
     )
+
+    running_times_command = subparsers.add_parser(
+        "measure-running-times",
+        help="Measure running times for the tools used to produce the provided "
+        "merge results.",
+        description="Measure running times for merges already computed with "
+        "the run-file-merges command. The from merging in this "
+        "experiment are validated against the previously computed results.",
+    )
+    running_times_command.add_argument(
+        "-r",
+        "--reference-merge-results",
+        type=pathlib.Path,
+        required=True,
+    )
+    running_times_command.add_argument(
+        "--base-merge-dir",
+        type=pathlib.Path,
+        required=True,
+    )
+    running_times_command.add_argument("--num-repetitions", type=int, required=True)
 
     return parser
 
@@ -311,6 +329,11 @@ def main():
             repo_name=args.repo,
             github_user=args.github_user,
             threshold=args.threshold,
+        )
+        return
+    elif args.command == "measure-running-times":
+        command.measure_running_times(
+            args.reference_merge_results, args.base_merge_dir, args.num_repetitions
         )
         return
 
