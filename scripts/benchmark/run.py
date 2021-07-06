@@ -429,7 +429,7 @@ def _merge_and_verify_result(
         workdir = pathlib.Path(tmpdir)
         merge_dir = (
             workdir
-            / "merge_dirs"
+            / reference_merge_dir_abspath.parent.parent.parent.name
             / reference_merge_dir_abspath.parent.parent.name
             / reference_merge_dir_abspath.parent.name
             / reference_merge_dir_abspath.name

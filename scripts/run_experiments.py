@@ -21,6 +21,10 @@ MERGE_DRIVERS = ("spork", "jdime")
 CANDIDATE_PROJECTS_FILE = pathlib.Path("buildable_candidates.txt")
 BASE_EXPERIMENT_DIRECTORY = pathlib.Path("merge_dirs")
 
+FILE_MERGE_RESULTS_FILENAME = "file_merge_results.csv"
+GIT_MERGE_RESULTS_FILENAME = "git_merge_results.csv"
+RUNNING_TIMES_FILENAME = "running_times.csv"
+
 # add projects here if a restart was forced and these need to be reprocessed,
 # or if some projects should simply always be processed
 # Example: MANDATORY_PROJECTS = ["awslabs/aws-codedeploy-plugin", "inria/spoon"]
@@ -46,14 +50,36 @@ def main():
 
     for (github_user, repo_name) in projects:
         project_merge_scenarios = run_benchmarks_on_project(
-            repo_name=repo_name, github_user=github_user,
+            repo_name=repo_name, github_user=github_user
         )
         total_num_merge_scenarios += project_merge_scenarios
         if total_num_merge_scenarios >= NUM_SCENARIOS:
             break
 
+    command.compose_csv_files(
+        merge_dirs_root=BASE_EXPERIMENT_DIRECTORY,
+        results_csv_name=GIT_MERGE_RESULTS_FILENAME,
+        output_file=BASE_EXPERIMENT_DIRECTORY / GIT_MERGE_RESULTS_FILENAME,
+    )
 
-def run_benchmarks_on_project(repo_name: str, github_user: str,) -> int:
+    composed_file_merge_results_file = (
+        BASE_EXPERIMENT_DIRECTORY / FILE_MERGE_RESULTS_FILENAME
+    )
+    command.compose_csv_files(
+        merge_dirs_root=BASE_EXPERIMENT_DIRECTORY,
+        results_csv_name=FILE_MERGE_RESULTS_FILENAME,
+        output_file=composed_file_merge_results_file,
+    )
+
+    command.measure_running_times(
+        reference_merge_results_file=composed_file_merge_results_file,
+        merge_dirs_root=BASE_EXPERIMENT_DIRECTORY,
+        num_repetitions=2,
+        output_file=BASE_EXPERIMENT_DIRECTORY / RUNNING_TIMES_FILENAME,
+    )
+
+
+def run_benchmarks_on_project(repo_name: str, github_user: str) -> int:
     """Run the benchmarks on a single project.
 
     Args:
@@ -65,8 +91,8 @@ def run_benchmarks_on_project(repo_name: str, github_user: str,) -> int:
     base_merge_dir = BASE_EXPERIMENT_DIRECTORY / f"{github_user}_{repo_name}"
     base_merge_dir.mkdir(exist_ok=True, parents=True)
     merge_scenarios_path = base_merge_dir / "merge_scenarios.csv"
-    file_merge_output = base_merge_dir / "file_merge_results.csv"
-    git_merge_output = base_merge_dir / "git_merge_results.csv"
+    file_merge_output = base_merge_dir / FILE_MERGE_RESULTS_FILENAME
+    git_merge_output = base_merge_dir / GIT_MERGE_RESULTS_FILENAME
 
     if not merge_scenarios_path.exists():
         command.extract_merge_scenarios(
@@ -120,9 +146,7 @@ def run_benchmarks_on_project(repo_name: str, github_user: str,) -> int:
     return num_merge_scenarios
 
 
-def select_merge_scenarios(
-    merge_scenarios_path: pathlib.Path, limit: int
-) -> int:
+def select_merge_scenarios(merge_scenarios_path: pathlib.Path, limit: int) -> int:
     """Randomly select a maximum of limit merge scenarios and write them back
     into the file.
 
@@ -146,9 +170,7 @@ def select_merge_scenarios(
         merge_scenarios_path,
         merge_scenarios_path.parent / (merge_scenarios_path.name + ".bak"),
     )
-    random_selection = np.random.choice(
-        scenario_lines, size=limit, replace=False
-    )
+    random_selection = np.random.choice(scenario_lines, size=limit, replace=False)
     lines = "\n".join([headers, *random_selection, ""])
     merge_scenarios_path.write_text(lines, encoding=sys.getdefaultencoding())
     return limit
