@@ -383,13 +383,34 @@ def run_running_time_benchmark(
     reference_merge_results: List[conts.NamedMergeEvaluation],
     merge_dirs_root: pathlib.Path,
     num_repetitions: int,
-) -> Iterable[conts.MergeResult]:
+) -> Iterable[conts.RunningTime]:
     _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, merge_dirs_root)
+    success_reference_merge_results = _filter_out_commits_with_fails(
+        reference_merge_results
+    )
     return (
         _merge_and_verify_result(merge_dirs_root, reference_eval)
-        for reference_eval in reference_merge_results
+        for reference_eval in success_reference_merge_results
         for _ in range(0, num_repetitions)
     )
+
+
+def _filter_out_commits_with_fails(
+    reference_merge_results: List[conts.NamedMergeEvaluation],
+) -> List[conts.NamedMergeEvaluation]:
+    LOGGER.info("Filtering out commits where any tool has failure")
+    commits_with_fails = {
+        fileutils.extract_commit_sha(merge_result.merge_dir)
+        for merge_result in reference_merge_results
+        if merge_result.outcome == conts.MergeOutcome.FAIL
+    }
+    LOGGER.info(f"Found {len(commits_with_fails)} commits with failures, removing ...")
+    return [
+        merge_result
+        for merge_result in reference_merge_results
+        if fileutils.extract_commit_sha(merge_result.merge_dir)
+        not in commits_with_fails
+    ]
 
 
 def _verify_merge_scenarios_exist_in_merge_dir(
@@ -409,18 +430,17 @@ def _verify_merge_scenarios_exist_in_merge_dir(
         _assert_matches_hash(merge_dir_abspath / "Left.java", merge_eval.left_blob)
         _assert_matches_hash(merge_dir_abspath / "Right.java", merge_eval.right_blob)
 
-        if merge_eval.outcome == conts.MergeOutcome.SUCCESS:
-            _assert_matches_hash(
-                merge_dir_abspath / f"{merge_eval.merge_cmd}.java",
-                merge_eval.replayed_blob,
-            )
+        _assert_matches_hash(
+            merge_dir_abspath / f"{merge_eval.merge_cmd}.java",
+            merge_eval.replayed_blob,
+        )
 
     LOGGER.info("SUCCESS: All merge directories accounted for")
 
 
 def _merge_and_verify_result(
     merge_dirs_root: pathlib.Path, reference_merge_eval: conts.NamedMergeEvaluation
-) -> conts.MergeResult:
+) -> conts.RunningTime:
     reference_merge_dir_abspath = _get_merge_dir_abspath(
         merge_dirs_root, reference_merge_eval
     )
@@ -450,7 +470,16 @@ def _merge_and_verify_result(
                     f"Content mismatch in merge file for {reference_merge_eval}"
                 )
 
-    return merge_result
+    project = fileutils.extract_project_name(reference_merge_dir_abspath)
+    commit_sha = fileutils.extract_commit_sha(reference_merge_dir_abspath)
+
+    return conts.RunningTime(
+        project=project,
+        commit_sha=commit_sha,
+        merge_dir=merge_result.merge_dir,
+        merge_cmd=merge_result.merge_cmd,
+        running_time=merge_result.runtime,
+    )
 
 
 def _assert_matches_hash(filepath: pathlib.Path, expected_hash: str):

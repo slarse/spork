@@ -302,11 +302,13 @@ def measure_running_times(
     )
 
     LOGGER.info(f"Running benchmark with {num_repetitions} repetitions")
-    merge_results = run.run_running_time_benchmark(
+    running_times = run.run_running_time_benchmark(
         reference_merge_results, merge_dirs_root, num_repetitions
     )
 
-    reporter.write_csv(data=merge_results, container=conts.MergeResult, dst=output_file)
+    reporter.write_csv(
+        data=running_times, container=conts.RunningTime, dst=output_file
+    )
 
 
 def compose_csv_files(
@@ -316,7 +318,6 @@ def compose_csv_files(
     composed_frame = _read_results(merge_dirs_root, results_csv_name)
     composed_frame.to_csv(output_file, index=False)
     LOGGER.info(f"Composed results written to {output_file}")
-
 
 
 def _read_results(merge_dirs_root: pathlib.Path, results_csv_name: str) -> pd.DataFrame:

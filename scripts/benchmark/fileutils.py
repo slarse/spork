@@ -70,7 +70,11 @@ def _write_blob_to_file(filepath, blob):
 
 def extract_commit_sha(merge_dir: pathlib.Path) -> str:
     """Extract the commit sha from a merge directory path."""
-    return list(merge_dir.parents)[0].name
+    return merge_dir.parent.name
+
+def extract_project_name(merge_dir: pathlib.Path) -> str:
+    """Extract the project name on the form "owner/path" from a merge directory path."""
+    return merge_dir.parent.parent.name.replace("_", "/")
 
 
 def count_lines(filepath: pathlib.Path) -> int:

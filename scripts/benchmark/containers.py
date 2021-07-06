@@ -187,6 +187,13 @@ class MergeResult:
     outcome: MergeOutcome
     runtime: int
 
+@dataclasses.dataclass(frozen=True)
+class RunningTime:
+    project: str
+    commit_sha: str
+    merge_dir: pathlib.Path
+    merge_cmd: str
+    running_time: int
 
 @dataclasses.dataclass(frozen=True, order=True)
 class GitMergeResult:
