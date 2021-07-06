@@ -24,6 +24,7 @@ from . import procutils
 
 LOGGER = daiquiri.getLogger(__name__)
 
+
 def run_file_merges(
     file_merge_dirs: List[pathlib.Path], merge_cmd: str
 ) -> Iterable[conts.MergeResult]:
@@ -95,16 +96,12 @@ def run_individual_file_merge(
     )
 
 
-def _run_file_merges(
-    file_merge_dirs: List[pathlib.Path], merge_cmd: str
-) -> Iterable:
+def _run_file_merges(file_merge_dirs: List[pathlib.Path], merge_cmd: str) -> Iterable:
     for merge_dir in file_merge_dirs:
         yield run_individual_file_merge(merge_dir, merge_cmd)
 
 
-def _run_file_merge(
-    scenario_dir, merge_cmd, base, left, right, expected, merge
-):
+def _run_file_merge(scenario_dir, merge_cmd, base, left, right, expected, merge):
     timed_out = False
     start = time.perf_counter()
 
@@ -200,11 +197,7 @@ def run_git_merge(
     ms = merge_scenario  # alias for less verbosity
     expected_classfiles = tuple()
 
-    eval_dir = (
-        base_eval_dir / merge_scenario.expected.hexsha
-        if base_eval_dir
-        else None
-    )
+    eval_dir = base_eval_dir / merge_scenario.expected.hexsha if base_eval_dir else None
 
     if eval_dir:
         with gitutils.saved_git_head(repo):
@@ -243,13 +236,9 @@ def run_git_merge(
 
             if build or eval_dir:
                 LOGGER.info("Building replayed revision")
-                build_ok, output = javautils.mvn_compile(
-                    workdir=repo.working_tree_dir
-                )
+                build_ok, output = javautils.mvn_compile(workdir=repo.working_tree_dir)
                 if eval_dir:
-                    (
-                        eval_dir / f"{merge_driver}_build_output.txt"
-                    ).write_bytes(output)
+                    (eval_dir / f"{merge_driver}_build_output.txt").write_bytes(output)
                 _log_cond(
                     "Replayed build OK",
                     output,
@@ -257,10 +246,7 @@ def run_git_merge(
                 )
 
             if eval_dir:
-                for (
-                    classfile_pair,
-                    equal,
-                ) in javautils.compare_compiled_bytecode(
+                for (classfile_pair, equal,) in javautils.compare_compiled_bytecode(
                     pathlib.Path(repo.working_tree_dir),
                     expected_classfiles,
                     eval_dir,
@@ -269,11 +255,11 @@ def run_git_merge(
                     expected_classfile_relpath = (
                         classfile_pair.expected.original_relpath
                     )
-                    expected_src_relpath = (
-                        classfile_pair.expected.original_src_relpath
-                    )
+                    expected_src_relpath = classfile_pair.expected.original_src_relpath
                     expected_classfile_qualname = classfile_pair.expected.qualname
-                    classfile_dir = classfile_pair.expected.copy_basedir.relative_to(base_eval_dir)
+                    classfile_dir = classfile_pair.expected.copy_basedir.relative_to(
+                        base_eval_dir
+                    )
                     yield conts.GitMergeResult(
                         merge_commit=ms.expected.hexsha,
                         classfile_dir=classfile_dir,
@@ -316,9 +302,7 @@ def _extract_expected_revision_classfiles(
     build_ok, build_output = javautils.mvn_compile(workdir=worktree_dir)
     if not build_ok:
         LOGGER.error(build_output.decode(sys.getdefaultencoding()))
-        raise RuntimeError(
-            f"Failed to build expected revision {ms.expected.hexsha}"
-        )
+        raise RuntimeError(f"Failed to build expected revision {ms.expected.hexsha}")
 
     sources = [worktree_dir / unmerged for unmerged in unmerged_files]
     LOGGER.info(f"Extracted unmerged files: {sources}")
@@ -416,3 +400,103 @@ def runtime_benchmark(
                 merge_cmd=merge_cmd,
                 runtime_ms=ms.runtime,
             )
+
+
+def run_running_time_benchmark(
+    reference_merge_results: List[conts.NamedMergeEvaluation],
+    base_merge_dir: pathlib.Path,
+    num_repetitions: int,
+) -> Iterable[conts.MergeResult]:
+    _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, base_merge_dir)
+    return (
+        _merge_and_verify_result(base_merge_dir, reference_eval)
+        for reference_eval in reference_merge_results
+        for _ in range(0, num_repetitions)
+    )
+
+
+def _verify_merge_scenarios_exist_in_merge_dir(
+    reference_merge_results: List[conts.NamedMergeEvaluation],
+    base_merge_dir: pathlib.Path,
+):
+    LOGGER.info("Validating merge directories against reference results ...")
+    for merge_eval in reference_merge_results:
+        merge_dir_abspath = _get_merge_dir_abspath(base_merge_dir, merge_eval)
+        expected_filesnames = [
+            "Base.java",
+            "Left.java",
+            "Right.java",
+        ]
+        assert merge_dir_abspath.is_dir(), f"{merge_dir_abspath} does not exist"
+        _assert_matches_hash(merge_dir_abspath / "Base.java", merge_eval.base_blob)
+        _assert_matches_hash(merge_dir_abspath / "Left.java", merge_eval.left_blob)
+        _assert_matches_hash(merge_dir_abspath / "Right.java", merge_eval.right_blob)
+
+        if merge_eval.outcome == conts.MergeOutcome.SUCCESS:
+            _assert_matches_hash(
+                merge_dir_abspath / f"{merge_eval.merge_cmd}.java",
+                merge_eval.replayed_blob,
+            )
+
+    LOGGER.info("SUCCESS: All merge directories accounted for")
+
+
+def _merge_and_verify_result(
+    base_merge_dir: pathlib.Path, reference_merge_eval: conts.NamedMergeEvaluation
+) -> conts.MergeResult:
+    reference_merge_dir_abspath = _get_merge_dir_abspath(
+        base_merge_dir, reference_merge_eval
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workdir = pathlib.Path(tmpdir)
+        merge_dir = (
+            workdir
+            / "merge_dirs"
+            / reference_merge_dir_abspath.parent.parent.name
+            / reference_merge_dir_abspath.parent.name
+            / reference_merge_dir_abspath.name
+        )
+        merge_dir.mkdir(parents=True, exist_ok=False)
+        _copy_merge_dir(src=reference_merge_dir_abspath, dst=merge_dir)
+
+        with _in_workdir(workdir):
+            merge_result = run_individual_file_merge(
+                merge_dir.relative_to(workdir), reference_merge_eval.merge_cmd
+            )
+
+            if merge_result.outcome != conts.MergeOutcome.FAIL and (
+                gitutils.hash_object(merge_result.merge_file)
+                != reference_merge_eval.replayed_blob
+            ):
+                raise RuntimeError(
+                    f"Content mismatch in merge file for {reference_merge_eval}"
+                )
+
+    return merge_result
+
+
+def _assert_matches_hash(filepath: pathlib.Path, expected_hash: str):
+    actual_hash = gitutils.hash_object(filepath)
+    assert actual_hash == expected_hash, f"hash mismatch for {filepath}"
+
+
+def _copy_merge_dir(src: pathlib.Path, dst: pathlib.Path):
+    for filename in ["Left.java", "Right.java", "Base.java", "Expected.java"]:
+        shutil.copyfile(src / filename, dst / filename)
+
+
+def _get_merge_dir_abspath(
+    base_merge_dir: pathlib.Path, merge_eval: conts.NamedMergeEvaluation
+) -> pathlib.Path:
+    return base_merge_dir / merge_eval.project.replace("/", "_") / merge_eval.merge_dir
+
+
+@contextlib.contextmanager
+def _in_workdir(workdir: pathlib.Path):
+    orig_dir = os.getcwd()
+    try:
+        os.chdir(str(workdir))
+        yield
+    finally:
+        os.chdir(orig_dir)

@@ -292,117 +292,15 @@ def measure_running_times(
     LOGGER.info(
         f"Loaded {len(reference_merge_results)} reference merge results for {merge_cmds}"
     )
-    _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, base_merge_dir)
 
     LOGGER.info(f"Running benchmark with {num_repetitions} repetitions")
-    merge_results = _run_runtime_benchmarks(
+    merge_results = run.run_running_time_benchmark(
         reference_merge_results, base_merge_dir, num_repetitions
     )
 
     reporter.write_csv(
         data=merge_results, container=conts.MergeResult, dst="runtime_benchmark.csv"
     )
-
-
-def _verify_merge_scenarios_exist_in_merge_dir(
-    reference_merge_results: List[conts.NamedMergeEvaluation],
-    base_merge_dir: pathlib.Path,
-):
-    LOGGER.info("Validating merge directories against reference results ...")
-    for merge_eval in reference_merge_results:
-        merge_dir_abspath = _get_merge_dir_abspath(base_merge_dir, merge_eval)
-        expected_filesnames = [
-            "Base.java",
-            "Left.java",
-            "Right.java",
-        ]
-        assert merge_dir_abspath.is_dir(), f"{merge_dir_abspath} does not exist"
-        _assert_matches_hash(merge_dir_abspath / "Base.java", merge_eval.base_blob)
-        _assert_matches_hash(merge_dir_abspath / "Left.java", merge_eval.left_blob)
-        _assert_matches_hash(merge_dir_abspath / "Right.java", merge_eval.right_blob)
-
-        if merge_eval.outcome == conts.MergeOutcome.SUCCESS:
-            _assert_matches_hash(
-                merge_dir_abspath / f"{merge_eval.merge_cmd}.java",
-                merge_eval.replayed_blob,
-            )
-
-    LOGGER.info("SUCCESS: All merge directories accounted for")
-
-
-def _assert_matches_hash(filepath: pathlib.Path, expected_hash: str):
-    actual_hash = gitutils.hash_object(filepath)
-    assert actual_hash == expected_hash, f"hash mismatch for {filepath}"
-
-
-def _run_runtime_benchmarks(
-    reference_merge_results: List[conts.NamedMergeEvaluation],
-    base_merge_dir: pathlib.Path,
-    num_repetitions: int,
-) -> Iterable[conts.MergeResult]:
-    return (
-        _merge_and_verify_result(base_merge_dir, reference_eval)
-        for reference_eval in reference_merge_results
-        for _ in range(0, num_repetitions)
-    )
-
-
-def _copy_merge_scenario(from_dir: pathlib.Path, to_dir: pathlib.Path):
-    for filename in ["Left.java", "Right.java", "Base.java", "Expected.java"]:
-        shutil.copyfile(from_dir / filename, to_dir / filename)
-
-
-def _merge_and_verify_result(
-    base_merge_dir: pathlib.Path, reference_merge_eval: conts.NamedMergeEvaluation
-) -> conts.MergeResult:
-    reference_merge_dir_abspath = _get_merge_dir_abspath(
-        base_merge_dir, reference_merge_eval
-    )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        workdir = pathlib.Path(tmpdir)
-        merge_dir = (
-            workdir
-            / "merge_dirs"
-            / reference_merge_dir_abspath.parent.parent.name
-            / reference_merge_dir_abspath.parent.name
-            / reference_merge_dir_abspath.name
-        )
-        merge_dir.mkdir(parents=True, exist_ok=False)
-        _copy_merge_scenario(reference_merge_dir_abspath, merge_dir)
-
-        with _in_workdir(workdir):
-            merge_result = run.run_individual_file_merge(
-                merge_dir.relative_to(workdir), reference_merge_eval.merge_cmd
-            )
-
-            if merge_result.outcome != conts.MergeOutcome.FAIL and (
-                gitutils.hash_object(merge_result.merge_file)
-                != reference_merge_eval.replayed_blob
-            ):
-                raise RuntimeError(
-                    f"Content mismatch in merge file for {reference_merge_eval}"
-                )
-
-    return merge_result
-
-
-def _get_merge_dir_abspath(
-    base_merge_dir: pathlib.Path, merge_eval: conts.NamedMergeEvaluation
-) -> pathlib.Path:
-    return base_merge_dir / merge_eval.project.replace("/", "_") / merge_eval.merge_dir
-
-import os
-import contextlib
-
-@contextlib.contextmanager
-def _in_workdir(workdir: pathlib.Path):
-    orig_dir = os.getcwd()
-    try:
-        os.chdir(str(workdir))
-        yield
-    finally:
-        os.chdir(orig_dir)
 
 
 def runtime_benchmark(
