@@ -172,30 +172,6 @@ def create_cli_parser():
         default=None,
     )
 
-    runtime_bench_command = subparsers.add_parser(
-        "runtime-benchmark",
-        help="Benchmark runtime performance on a per-file basis for the provided merge commits.",
-        description=(
-            "Benchmark runtime performance on a per-file basis. Each merge "
-            "command must output `Parse: ms`, `Merge: ms` and `Total: ms` "
-            "as the final three lines of output."
-        ),
-        parents=[base_merge_parser],
-    )
-    runtime_bench_command.add_argument(
-        "--file-merge-metainfo",
-        help="Path to a CSV file with file merge metainfo. "
-        "Use the `extract-file-merge-metainfo` command to generate one.",
-        required=True,
-        type=pathlib.Path,
-    )
-    runtime_bench_command.add_argument(
-        "--num-runs",
-        help="Amount of times to repeat each merge.",
-        required=True,
-        type=int,
-    )
-
     merge_extractor_command = subparsers.add_parser(
         "extract-merge-scenarios",
         help="Extract merge scenarios from a repo.",
@@ -259,7 +235,7 @@ def create_cli_parser():
         help="Measure running times for the tools used to produce the provided "
         "merge results.",
         description="Measure running times for merges already computed with "
-        "the run-file-merges command. The from merging in this "
+        "the run-file-merges command. The merge results from each tool in this "
         "experiment are validated against the previously computed results.",
     )
     running_times_command.add_argument(
@@ -269,11 +245,21 @@ def create_cli_parser():
         required=True,
     )
     running_times_command.add_argument(
-        "--base-merge-dir",
+        "--merge-dirs-root",
+        help="Path to the directory containing all of the base merge "
+        "directories. This typically corresponds to the working directory "
+        "where the experiments were executed.",
         type=pathlib.Path,
         required=True,
     )
     running_times_command.add_argument("--num-repetitions", type=int, required=True)
+    running_times_command.add_argument(
+        "-o",
+        "--output",
+        help="Where to store the output.",
+        type=pathlib.Path,
+        default="running_times.csv",
+    )
 
     return parser
 
@@ -312,18 +298,6 @@ def main():
             base_eval_dir=args.eval_dir,
             num_merges=args.num_merges,
         )
-    elif args.command == "runtime-benchmark":
-        command.runtime_benchmark(
-            repo_name=args.repo,
-            github_user=args.github_user,
-            merge_commands=args.merge_commands,
-            num_runs=args.num_runs,
-            file_merge_metainfo=args.file_merge_metainfo,
-            output_file=args.output or pathlib.Path("runtimes.csv"),
-            base_merge_dir=args.base_merge_dir,
-            num_merges=args.num_merges,
-        )
-        return
     elif args.command == "num-core-contributors":
         command.num_core_contributors(
             repo_name=args.repo,
@@ -333,7 +307,10 @@ def main():
         return
     elif args.command == "measure-running-times":
         command.measure_running_times(
-            args.reference_merge_results, args.base_merge_dir, args.num_repetitions
+            args.reference_merge_results,
+            args.merge_dirs_root,
+            args.num_repetitions,
+            args.output,
         )
         return
 

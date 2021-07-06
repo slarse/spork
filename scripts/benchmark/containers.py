@@ -202,7 +202,8 @@ class GitMergeResult:
 
 
 @dataclasses.dataclass(frozen=True, order=True)
-class RuntimeResult:
+class RunningTimeResult:
+    project: str
     merge_commit: str
     base_blob: str
     left_blob: str

@@ -379,37 +379,14 @@ def is_testable(commit_sha: str, repo: git.Repo) -> bool:
         return javautils.mvn_test(workdir=repo.working_tree_dir)
 
 
-def runtime_benchmark(
-    file_merge_dirs: List[pathlib.Path], merge_cmd: str, repeats: int
-) -> Iterable[conts.RuntimeResult]:
-    for _ in range(repeats):
-        for ms in _run_file_merges(file_merge_dirs, merge_cmd):
-            assert ms.outcome != conts.MergeOutcome.FAIL
-
-            merge_commit = fileutils.extract_commit_sha(ms.merge_dir)
-            base_blob, left_blob, right_blob = [
-                gitutils.hash_object(fp)
-                for fp in [ms.base_file, ms.left_file, ms.right_file]
-            ]
-
-            yield conts.RuntimeResult(
-                merge_commit=merge_commit,
-                base_blob=base_blob,
-                left_blob=left_blob,
-                right_blob=right_blob,
-                merge_cmd=merge_cmd,
-                runtime_ms=ms.runtime,
-            )
-
-
 def run_running_time_benchmark(
     reference_merge_results: List[conts.NamedMergeEvaluation],
-    base_merge_dir: pathlib.Path,
+    merge_dirs_root: pathlib.Path,
     num_repetitions: int,
 ) -> Iterable[conts.MergeResult]:
-    _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, base_merge_dir)
+    _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, merge_dirs_root)
     return (
-        _merge_and_verify_result(base_merge_dir, reference_eval)
+        _merge_and_verify_result(merge_dirs_root, reference_eval)
         for reference_eval in reference_merge_results
         for _ in range(0, num_repetitions)
     )
@@ -417,11 +394,11 @@ def run_running_time_benchmark(
 
 def _verify_merge_scenarios_exist_in_merge_dir(
     reference_merge_results: List[conts.NamedMergeEvaluation],
-    base_merge_dir: pathlib.Path,
+    merge_dirs_root: pathlib.Path,
 ):
     LOGGER.info("Validating merge directories against reference results ...")
     for merge_eval in reference_merge_results:
-        merge_dir_abspath = _get_merge_dir_abspath(base_merge_dir, merge_eval)
+        merge_dir_abspath = _get_merge_dir_abspath(merge_dirs_root, merge_eval)
         expected_filesnames = [
             "Base.java",
             "Left.java",
@@ -442,10 +419,10 @@ def _verify_merge_scenarios_exist_in_merge_dir(
 
 
 def _merge_and_verify_result(
-    base_merge_dir: pathlib.Path, reference_merge_eval: conts.NamedMergeEvaluation
+    merge_dirs_root: pathlib.Path, reference_merge_eval: conts.NamedMergeEvaluation
 ) -> conts.MergeResult:
     reference_merge_dir_abspath = _get_merge_dir_abspath(
-        base_merge_dir, reference_merge_eval
+        merge_dirs_root, reference_merge_eval
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -487,9 +464,9 @@ def _copy_merge_dir(src: pathlib.Path, dst: pathlib.Path):
 
 
 def _get_merge_dir_abspath(
-    base_merge_dir: pathlib.Path, merge_eval: conts.NamedMergeEvaluation
+    merge_dirs_root: pathlib.Path, merge_eval: conts.NamedMergeEvaluation
 ) -> pathlib.Path:
-    return base_merge_dir / merge_eval.project.replace("/", "_") / merge_eval.merge_dir
+    return merge_dirs_root / merge_eval.project.replace("/", "_") / merge_eval.merge_dir
 
 
 @contextlib.contextmanager

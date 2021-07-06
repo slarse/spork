@@ -282,6 +282,7 @@ def measure_running_times(
     reference_merge_results_file: pathlib.Path,
     base_merge_dir: pathlib.Path,
     num_repetitions: int,
+    output_file: pathlib.Path,
 ):
     reference_merge_results = reporter.read_csv(
         reference_merge_results_file, conts.NamedMergeEvaluation
@@ -299,35 +300,7 @@ def measure_running_times(
     )
 
     reporter.write_csv(
-        data=merge_results, container=conts.MergeResult, dst="runtime_benchmark.csv"
-    )
-
-
-def runtime_benchmark(
-    repo_name: str,
-    github_user: Optional[str],
-    merge_commands: List[str],
-    num_runs: int,
-    file_merge_metainfo: pathlib.Path,
-    base_merge_dir: pathlib.Path,
-    num_merges: Optional[int],
-    output_file: pathlib.Path,
-):
-    """Run a runtime benchmark on individual file merges."""
-    repo = _get_repo(repo_name, github_user)
-    file_merge_metainfo = reporter.read_csv(
-        csv_file=file_merge_metainfo, container=conts.FileMergeMetainfo
-    )
-    file_merges = (conts.FileMerge.from_metainfo(repo, m) for m in file_merge_metainfo)
-    merge_dirs = fileutils.create_merge_dirs(base_merge_dir, file_merges)[:num_merges]
-
-    runtime_results = itertools.chain.from_iterable(
-        run.runtime_benchmark(merge_dirs, merge_cmd, num_runs)
-        for merge_cmd in merge_commands
-    )
-
-    reporter.write_csv(
-        data=runtime_results, container=conts.RuntimeResult, dst=output_file
+        data=merge_results, container=conts.MergeResult, dst=output_file
     )
 
 
