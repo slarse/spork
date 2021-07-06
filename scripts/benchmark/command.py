@@ -284,6 +284,13 @@ def measure_running_times(
     num_repetitions: int,
     output_file: pathlib.Path,
 ):
+    """Measure running times for already computed file merges.
+
+    Each merge present in reference_merge_results is executed again with the
+    indicated tool, and the new result is validated against (original) replayed
+    blob hash. This is repeated num_repetitions times for each file merge and
+    tool.
+    """
     reference_merge_results = reporter.read_csv(
         reference_merge_results_file, conts.NamedMergeEvaluation
     )
