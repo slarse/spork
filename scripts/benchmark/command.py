@@ -306,9 +306,40 @@ def measure_running_times(
         reference_merge_results, merge_dirs_root, num_repetitions
     )
 
-    reporter.write_csv(
-        data=merge_results, container=conts.MergeResult, dst=output_file
-    )
+    reporter.write_csv(data=merge_results, container=conts.MergeResult, dst=output_file)
+
+
+def compose_csv_files(
+    merge_dirs_root: pathlib.Path, results_csv_name: str, output_file: pathlib.Path
+):
+    LOGGER.info(f"Collecting {results_csv_name} files from {merge_dirs_root}")
+    composed_frame = _read_results(merge_dirs_root, results_csv_name)
+    composed_frame.to_csv(output_file, index=False)
+    LOGGER.info(f"Composed results written to {output_file}")
+
+
+
+def _read_results(merge_dirs_root: pathlib.Path, results_csv_name: str) -> pd.DataFrame:
+    frames = []
+    for dir_ in merge_dirs_root.iterdir():
+        if not dir_.is_dir():
+            continue
+        proj_name = dir_.name.replace("_", "/")
+        try:
+            frame = pd.read_csv(str(dir_ / results_csv_name), skipinitialspace=True)
+        except FileNotFoundError:
+            continue
+        frames.append(_prepend_uniform_column(frame, "project", proj_name))
+    return pd.concat(frames)
+
+
+def _prepend_uniform_column(
+    frame: pd.DataFrame, column_name: str, value: str
+) -> pd.DataFrame:
+    frame[column_name] = value
+    cols = frame.columns.to_list()
+    cols = cols[-1:] + cols[:-1]
+    return frame[cols]
 
 
 def num_core_contributors(repo_name: str, github_user: Optional[str], threshold: float):

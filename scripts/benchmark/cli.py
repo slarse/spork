@@ -261,6 +261,34 @@ def create_cli_parser():
         default="running_times.csv",
     )
 
+    compose_csv_files_command = subparsers.add_parser(
+        "compose-csv-files",
+        help="Compose CSV results files from individual project benchmarks "
+        "into a single CSV file with an added 'project' column to indicate "
+        "which project each row is from.",
+    )
+    compose_csv_files_command.add_argument(
+        "--csv-name",
+        help="Name of the CSV file to collect from each project (e.g. `file_merge_results.csv`",
+        type=str,
+        required=True,
+    )
+    compose_csv_files_command.add_argument(
+        "--merge-dirs-root",
+        help="Path to the directory containing all of the base merge "
+        "directories. This typically corresponds to the working directory "
+        "where the experiments were executed.",
+        type=pathlib.Path,
+        required=True,
+    )
+    compose_csv_files_command.add_argument(
+        "-o",
+        "--output",
+        help="Where to store the output.",
+        type=pathlib.Path,
+        default="running_times.csv",
+    )
+
     return parser
 
 
@@ -310,6 +338,13 @@ def main():
             reference_merge_results_file=args.reference_merge_results,
             merge_dirs_root=args.merge_dirs_root,
             num_repetitions=args.num_repetitions,
+            output_file=args.output,
+        )
+        return
+    elif args.command == "compose-csv-files":
+        command.compose_csv_files(
+            merge_dirs_root=args.merge_dirs_root,
+            results_csv_name=args.csv_name,
             output_file=args.output,
         )
         return
