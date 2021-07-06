@@ -307,10 +307,10 @@ def main():
         return
     elif args.command == "measure-running-times":
         command.measure_running_times(
-            args.reference_merge_results,
-            args.merge_dirs_root,
-            args.num_repetitions,
-            args.output,
+            reference_merge_results_file=args.reference_merge_results,
+            merge_dirs_root=args.merge_dirs_root,
+            num_repetitions=args.num_repetitions,
+            output_file=args.output,
         )
         return
 

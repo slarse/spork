@@ -280,7 +280,7 @@ def git_merge(
 
 def measure_running_times(
     reference_merge_results_file: pathlib.Path,
-    base_merge_dir: pathlib.Path,
+    merge_dirs_root: pathlib.Path,
     num_repetitions: int,
     output_file: pathlib.Path,
 ):
@@ -303,7 +303,7 @@ def measure_running_times(
 
     LOGGER.info(f"Running benchmark with {num_repetitions} repetitions")
     merge_results = run.run_running_time_benchmark(
-        reference_merge_results, base_merge_dir, num_repetitions
+        reference_merge_results, merge_dirs_root, num_repetitions
     )
 
     reporter.write_csv(
