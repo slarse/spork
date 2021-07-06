@@ -430,10 +430,11 @@ def _verify_merge_scenarios_exist_in_merge_dir(
         _assert_matches_hash(merge_dir_abspath / "Left.java", merge_eval.left_blob)
         _assert_matches_hash(merge_dir_abspath / "Right.java", merge_eval.right_blob)
 
-        _assert_matches_hash(
-            merge_dir_abspath / f"{merge_eval.merge_cmd}.java",
-            merge_eval.replayed_blob,
-        )
+        if merge_eval.outcome == conts.MergeOutcome.SUCCESS:
+            _assert_matches_hash(
+                merge_dir_abspath / f"{merge_eval.merge_cmd}.java",
+                merge_eval.replayed_blob,
+            )
 
     LOGGER.info("SUCCESS: All merge directories accounted for")
 
