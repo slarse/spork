@@ -129,7 +129,11 @@ def _run_file_merge(scenario_dir, merge_cmd, base, left, right, expected, merge)
         if proc != None:
             LOGGER.error(out)
         return conts.MergeOutcome.FAIL, runtime
-    elif proc is None or proc.returncode != 0:
+    elif (
+        proc is None
+        or proc.returncode != 0
+        or gitutils.START_CONFLICT in merge.read_text()
+    ):
         LOGGER.warning(
             f"Merge conflict in {scenario_dir.parent.name}/{scenario_dir.name}"
         )
