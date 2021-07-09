@@ -200,6 +200,15 @@ def create_cli_parser():
         "non-content conflict, such as rename/rename or delete/modify.",
         action="store_true",
     )
+    merge_extractor_command.add_argument(
+        "--merge-scenarios",
+        help="Path to a file with previously extracted merge scenarios. "
+        "If provided, the command selects scenarios from among these "
+        "according to the criteria (e.g. --buildable and --testable). "
+        "This is useful for adding requirements to previously extracted "
+        "scenarios, or simply to re-validate old merge scenarios.",
+        type=pathlib.Path,
+    )
 
     file_merge_metainfo_command = subparsers.add_parser(
         "extract-file-merge-metainfo",
@@ -305,6 +314,7 @@ def main():
             buildable=args.buildable,
             testable=args.testable,
             skip_non_content_conflicts=args.skip_non_content_conflicts,
+            merge_scenarios=args.merge_scenarios,
         )
     elif args.command == "extract-file-merge-metainfo":
         command.extract_file_merge_metainfo(

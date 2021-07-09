@@ -118,10 +118,25 @@ def extract_merge_scenarios(
     skip_non_content_conflicts: bool,
     shuffle_commits: bool = False,
     timeout: Optional[int] = None,
+    merge_scenarios: Optional[pathlib.Path] = None,
 ):
     """Extract merge commits."""
     original_repo = _get_repo(repo_name, github_user)
-    commit_shas = list(gitutils.extract_merge_commit_shas(original_repo))
+
+    provided_commit_shas = [
+        scenario.expected
+        for scenario in (
+            reporter.read_csv(
+                merge_scenarios, container=conts.SerializableMergeScenario
+            )
+            if merge_scenarios
+            else []
+        )
+    ]
+
+    commit_shas = provided_commit_shas or list(
+        gitutils.extract_merge_commit_shas(original_repo)
+    )
 
     if shuffle_commits:
         np.random.shuffle(commit_shas)
@@ -306,9 +321,7 @@ def measure_running_times(
         reference_merge_results, merge_dirs_root, num_repetitions
     )
 
-    reporter.write_csv(
-        data=running_times, container=conts.RunningTime, dst=output_file
-    )
+    reporter.write_csv(data=running_times, container=conts.RunningTime, dst=output_file)
 
 
 def compose_csv_files(
