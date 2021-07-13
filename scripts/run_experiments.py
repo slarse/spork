@@ -23,7 +23,6 @@ CANDIDATE_PROJECTS_FILE = pathlib.Path("buildable_candidates.txt")
 BASE_EXPERIMENT_DIRECTORY = pathlib.Path("merge_dirs")
 
 FILE_MERGE_RESULTS_FILENAME = "file_merge_results.csv"
-GIT_MERGE_RESULTS_FILENAME = "git_merge_results.csv"
 RUNNING_TIMES_FILENAME = "running_times.csv"
 EVALUATION_FILENAME = "file_merge_evaluations.csv"
 
@@ -95,7 +94,6 @@ def run_file_merges_on_project(repo_name: str, github_user: str) -> int:
     base_merge_dir.mkdir(exist_ok=True, parents=True)
     merge_scenarios_path = base_merge_dir / "merge_scenarios.csv"
     file_merge_output = base_merge_dir / FILE_MERGE_RESULTS_FILENAME
-    git_merge_output = base_merge_dir / GIT_MERGE_RESULTS_FILENAME
 
     if not merge_scenarios_path.exists():
         command.extract_merge_scenarios(
