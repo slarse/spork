@@ -141,7 +141,9 @@ class MergeEvaluation:
     replayed_blob: str
     merge_cmd: str
     outcome: str
-    git_diff_size: int
+    line_diff_size: int
+    char_diff_size: int
+    char_diff_ratio: float
     num_conflicts: int
     conflict_size: int
     runtime: float

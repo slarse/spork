@@ -80,7 +80,9 @@ def evaluate_file_merge(
     base_merge_dir: pathlib.Path,
 ) -> conts.MergeEvaluation:
     """Gather evaluation results from the provided merge result."""
-    git_diff_size = -1
+    line_diff_size = -1
+    char_diff_size = -1
+    char_diff_ratio = -1
     conflict_size = 0
     num_conflicts = 0
 
@@ -93,13 +95,19 @@ def evaluate_file_merge(
     if merge_result.outcome != conts.MergeOutcome.FAIL:
         replayed_blob = gitutils.hash_object(replayed)
 
-        git_diff_size = diffutils.git_diff_edit_script_size(expected, replayed)
+        line_diff_size = diffutils.git_diff_edit_script_size(expected, replayed)
+        char_diff = diffutils.compute_character_diff(expected, replayed)
+        char_diff_size = char_diff.diff_size
+        char_diff_ratio = char_diff.ratio
 
         if merge_result.outcome == conts.MergeOutcome.CONFLICT:
             conflicts = extract_conflicts(replayed)
             conflict_size = sum(c.num_lines for c in conflicts)
             num_conflicts = len(conflicts)
 
+    LOGGER.info(
+        f"Evaluated file merge {merge_result.merge_dir.parent.name}/{merge_result.merge_dir.name}"
+    )
     return conts.MergeEvaluation(
         owner=merge_result.owner,
         repo=merge_result.repo,
@@ -107,7 +115,9 @@ def evaluate_file_merge(
         merge_dir=merge_result.merge_dir,
         merge_cmd=merge_result.merge_cmd,
         outcome=merge_result.outcome,
-        git_diff_size=git_diff_size,
+        line_diff_size=line_diff_size,
+        char_diff_size=char_diff_size,
+        char_diff_ratio=char_diff_ratio,
         conflict_size=conflict_size,
         num_conflicts=num_conflicts,
         runtime=merge_result.runtime,
