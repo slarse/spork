@@ -16,14 +16,16 @@ from benchmark import evaluate
 NUM_SCENARIOS = 1000
 MAX_SCENARIOS_PER_PROJECT = 50
 SCENARIO_EXTRACTION_TIME_LIMIT = 60 * 60  # 1 hour
-MERGE_COMMANDS = ("spork", "jdime")
-MERGE_DRIVERS = ("spork", "jdime")
+NUM_RUNNING_TIME_REPS = 10
+MERGE_COMMANDS = ("spork", "jdime", "jdimeimproved")
+MERGE_DRIVERS = ("spork", "jdime", "jdimeimproved")
 CANDIDATE_PROJECTS_FILE = pathlib.Path("buildable_candidates.txt")
 BASE_EXPERIMENT_DIRECTORY = pathlib.Path("merge_dirs")
 
 FILE_MERGE_RESULTS_FILENAME = "file_merge_results.csv"
 GIT_MERGE_RESULTS_FILENAME = "git_merge_results.csv"
 RUNNING_TIMES_FILENAME = "running_times.csv"
+EVALUATION_FILENAME = "file_merge_evaluations.csv"
 
 # add projects here if a restart was forced and these need to be reprocessed,
 # or if some projects should simply always be processed
@@ -49,37 +51,38 @@ def main():
     total_num_merge_scenarios = 0
 
     for (github_user, repo_name) in projects:
-        project_merge_scenarios = run_benchmarks_on_project(
+        project_merge_scenarios = run_file_merges_on_project(
             repo_name=repo_name, github_user=github_user
         )
         total_num_merge_scenarios += project_merge_scenarios
         if total_num_merge_scenarios >= NUM_SCENARIOS:
             break
 
-    command.compose_csv_files(
-        merge_dirs_root=BASE_EXPERIMENT_DIRECTORY,
-        results_csv_name=GIT_MERGE_RESULTS_FILENAME,
-        output_file=BASE_EXPERIMENT_DIRECTORY / GIT_MERGE_RESULTS_FILENAME,
-    )
-
     composed_file_merge_results_file = (
         BASE_EXPERIMENT_DIRECTORY / FILE_MERGE_RESULTS_FILENAME
     )
     command.compose_csv_files(
-        merge_dirs_root=BASE_EXPERIMENT_DIRECTORY,
+        base_merge_dir=BASE_EXPERIMENT_DIRECTORY,
         results_csv_name=FILE_MERGE_RESULTS_FILENAME,
         output_file=composed_file_merge_results_file,
     )
 
+    command.evaluate_file_merges(
+        reference_merge_results_file=composed_file_merge_results_file,
+        base_merge_dir=BASE_EXPERIMENT_DIRECTORY,
+        output_file=BASE_EXPERIMENT_DIRECTORY / EVALUATION_FILENAME,
+    )
+
     command.measure_running_times(
         reference_merge_results_file=composed_file_merge_results_file,
-        merge_dirs_root=BASE_EXPERIMENT_DIRECTORY,
-        num_repetitions=2,
+        base_merge_dir=BASE_EXPERIMENT_DIRECTORY,
+        num_repetitions=NUM_RUNNING_TIME_REPS,
         output_file=BASE_EXPERIMENT_DIRECTORY / RUNNING_TIMES_FILENAME,
     )
 
 
-def run_benchmarks_on_project(repo_name: str, github_user: str) -> int:
+
+def run_file_merges_on_project(repo_name: str, github_user: str) -> int:
     """Run the benchmarks on a single project.
 
     Args:
@@ -114,33 +117,15 @@ def run_benchmarks_on_project(repo_name: str, github_user: str) -> int:
         shutil.rmtree(base_merge_dir)
         return 0
 
-    eval_func = functools.partial(
-        evaluate.run_and_evaluate,
-        merge_commands=list(MERGE_COMMANDS),
-        base_merge_dir=base_merge_dir,
-    )
-
     command.run_file_merges(
         repo_name=repo_name,
         github_user=github_user,
-        eval_func=eval_func,
         output_file=file_merge_output,
-        use_mpi=False,
         merge_scenarios=merge_scenarios_path,
+        merge_commands=MERGE_COMMANDS,
         num_merges=None,
         gather_metainfo=True,
-        base_merge_dir=base_merge_dir,
-    )
-
-    command.git_merge(
-        repo_name=repo_name,
-        github_user=github_user,
-        merge_drivers=list(MERGE_DRIVERS),
-        merge_scenarios=merge_scenarios_path,
-        build=True,
-        base_eval_dir=base_merge_dir,
-        num_merges=None,
-        output_file=git_merge_output,
+        base_merge_dir=BASE_EXPERIMENT_DIRECTORY,
     )
 
     return num_merge_scenarios
