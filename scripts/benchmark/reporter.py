@@ -38,12 +38,13 @@ def read_csv(csv_file: pathlib.Path, container: T) -> List[T]:
     if not dataclasses.is_dataclass(container):
         raise TypeError(f"{container} is not a dataclass")
 
-    return _read_csv(container=container, csv_file=csv_file,)
+    return _read_csv(
+        container=container,
+        csv_file=csv_file,
+    )
 
 
-def _read_csv(
-    container: Callable[..., T], csv_file: pathlib.Path
-) -> Callable[..., T]:
+def _read_csv(container: Callable[..., T], csv_file: pathlib.Path) -> Callable[..., T]:
     fields = dataclasses.fields(container)
     expected_headers = [field.name for field in fields]
     with open(str(csv_file), mode="r") as file:
@@ -58,9 +59,7 @@ def _read_csv(
 
         def instantiate_container(line: List[str]) -> container:
             assert len(line) == len(fields)
-            kwargs = {
-                field.name: field.type(v) for v, field in zip(line, fields)
-            }
+            kwargs = {field.name: field.type(v) for v, field in zip(line, fields)}
             return container(**kwargs)
 
         return [instantiate_container(line) for line in reader]
@@ -68,19 +67,11 @@ def _read_csv(
 
 def _write_csv(headers: List[str], body: List[List[str]], dst: str):
     sorted_body = sorted(body)
-    formatted_content = _format_for_csv([headers, *sorted_body])
+    formatted_content = [headers, *sorted_body]
 
     with open(dst, mode="w", encoding=sys.getdefaultencoding()) as file:
         writer = csv.writer(file, delimiter=",")
         writer.writerows(formatted_content)
-
-
-def _format_for_csv(results: List[List[str]]) -> List[List[str]]:
-    column_widths = [largest + 1 for largest in _largest_cells(results)]
-    return [
-        [cell.rjust(column_widths[i]) for i, cell in enumerate(row)]
-        for row in results
-    ]
 
 
 def _largest_cells(rows):
