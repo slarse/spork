@@ -7,6 +7,7 @@ import argparse
 import functools
 import collections
 import itertools
+import dataclasses
 
 from typing import List, Optional, Iterable
 
@@ -229,6 +230,27 @@ def create_cli_parser():
         required=True,
     )
 
+    base_post_file_merge_parser = argparse.ArgumentParser(add_help=False)
+    base_post_file_merge_parser.add_argument(
+        "-r",
+        "--reference-merge-results",
+        type=pathlib.Path,
+        required=True,
+    )
+    base_post_file_merge_parser.add_argument(
+        "-o",
+        "--output",
+        help="Where to store the output.",
+        type=pathlib.Path,
+        default=None,
+    )
+    base_post_file_merge_parser.add_argument(
+        "--base-merge-dir",
+        help="Base directory to perform the merges in.",
+        type=_abspath,
+        default=pathlib.Path("merge_directory"),
+    )
+
     running_times_command = subparsers.add_parser(
         "measure-running-times",
         help="Measure running times for the tools used to produce the provided "
@@ -236,28 +258,14 @@ def create_cli_parser():
         description="Measure running times for merges already computed with "
         "the run-file-merges command. The merge results from each tool in this "
         "experiment are validated against the previously computed results.",
-    )
-    running_times_command.add_argument(
-        "-r",
-        "--reference-merge-results",
-        type=pathlib.Path,
-        required=True,
-    )
-    running_times_command.add_argument(
-        "--merge-dirs-root",
-        help="Path to the directory containing all of the base merge "
-        "directories. This typically corresponds to the working directory "
-        "where the experiments were executed.",
-        type=pathlib.Path,
-        required=True,
+        parents=[base_post_file_merge_parser],
     )
     running_times_command.add_argument("--num-repetitions", type=int, required=True)
-    running_times_command.add_argument(
-        "-o",
-        "--output",
-        help="Where to store the output.",
-        type=pathlib.Path,
-        default="running_times.csv",
+
+    subparsers.add_parser(
+        "evaluate-file-merges",
+        help="Run evaluations on previously computed file merges.",
+        parents=[base_post_file_merge_parser],
     )
 
     compose_csv_files_command = subparsers.add_parser(
@@ -273,19 +281,17 @@ def create_cli_parser():
         required=True,
     )
     compose_csv_files_command.add_argument(
-        "--merge-dirs-root",
-        help="Path to the directory containing all of the base merge "
-        "directories. This typically corresponds to the working directory "
-        "where the experiments were executed.",
-        type=pathlib.Path,
-        required=True,
-    )
-    compose_csv_files_command.add_argument(
         "-o",
         "--output",
         help="Where to store the output.",
         type=pathlib.Path,
-        default="running_times.csv",
+        default=None,
+    )
+    compose_csv_files_command.add_argument(
+        "--base-merge-dir",
+        help="Base directory to perform the merges in.",
+        type=_abspath,
+        default=pathlib.Path("merge_directory"),
     )
 
     return parser
@@ -336,38 +342,41 @@ def main():
     elif args.command == "measure-running-times":
         command.measure_running_times(
             reference_merge_results_file=args.reference_merge_results,
-            merge_dirs_root=args.merge_dirs_root,
+            base_merge_dir=args.base_merge_dir,
             num_repetitions=args.num_repetitions,
-            output_file=args.output,
+            output_file=args.output or "running_times.csv",
         )
         return
     elif args.command == "compose-csv-files":
         command.compose_csv_files(
-            merge_dirs_root=args.merge_dirs_root,
+            base_merge_dir=args.base_merge_dir,
             results_csv_name=args.csv_name,
             output_file=args.output,
         )
         return
-
-    eval_func = functools.partial(
-        evaluate.run_and_evaluate,
-        merge_commands=args.merge_commands,
-        base_merge_dir=args.base_merge_dir,
-    )
-
-    if args.command == "run-file-merges":
+    elif args.command == "evaluate-file-merges":
+        command.evaluate_file_merges(
+            args.reference_merge_results,
+            args.base_merge_dir,
+            args.output or "file_merge_evaluations.csv",
+        )
+    elif args.command == "run-file-merges":
         command.run_file_merges(
             repo_name=args.repo,
             github_user=args.github_user,
-            eval_func=eval_func,
             merge_scenarios=args.merge_scenarios,
+            merge_commands=args.merge_commands,
             num_merges=args.num_merges,
             gather_metainfo=args.gather_metainfo,
             output_file=args.output or pathlib.Path("file_merges.csv"),
+            base_merge_dir=args.base_merge_dir,
         )
+        return
     else:
         raise ValueError(f"Unexpected command: {args.command}")
 
+def _abspath(filepath: str) -> pathlib.Path:
+    return pathlib.Path(filepath).resolve(strict=False)
 
 if __name__ == "__main__":
     main()

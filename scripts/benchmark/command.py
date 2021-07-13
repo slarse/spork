@@ -11,7 +11,7 @@ import shutil
 import time
 import collections
 
-from typing import List, Optional, Iterable, Mapping, Callable
+from typing import List, Optional, Iterable, Mapping, Callable, Tuple
 
 import daiquiri
 import git
@@ -32,9 +32,9 @@ LOGGER = daiquiri.getLogger(__name__)
 def run_file_merges(
     repo_name: str,
     github_user: Optional[str],
-    eval_func: Callable,
     output_file: Optional[pathlib.Path],
     merge_scenarios: Optional[pathlib.Path],
+    merge_commands: List[str],
     num_merges: Optional[int],
     gather_metainfo: bool,
     base_merge_dir: pathlib.Path = pathlib.Path("merge_directory"),
@@ -45,8 +45,28 @@ def run_file_merges(
         if merge_scenarios
         else None
     )
-    evaluations, file_merges, merge_dirs = _run_file_merges(
-        eval_func=eval_func,
+
+    def _merge(file_merge_dirs: List[pathlib.Path]) -> Iterable[conts.MergeResult]:
+        for internal_merge_result in run.run_file_merges(
+            file_merge_dirs,
+            merge_commands=merge_commands,
+        ):
+            yield conts.MergeResult(
+                owner=github_user,
+                repo=repo_name,
+                **{
+                    key: item.relative_to(base_merge_dir)
+                    if isinstance(item, pathlib.Path)
+                    else item
+                    for key, item in dataclasses.asdict(
+                        internal_merge_result
+                    ).items()
+                },
+            )
+
+
+    results, file_merges, merge_dirs = _run_file_merges(
+        eval_func=_merge,
         repo_name=repo_name,
         github_user=github_user,
         num_merges=num_merges,
@@ -55,8 +75,8 @@ def run_file_merges(
     )
     output_file = output_file
     reporter.write_csv(
-        data=evaluations,
-        container=conts.MergeEvaluation,
+        data=results,
+        container=conts.MergeResult,
         dst=output_file,
     )
 
@@ -292,7 +312,7 @@ def git_merge(
 
 def measure_running_times(
     reference_merge_results_file: pathlib.Path,
-    merge_dirs_root: pathlib.Path,
+    base_merge_dir: pathlib.Path,
     num_repetitions: int,
     output_file: pathlib.Path,
 ):
@@ -304,7 +324,7 @@ def measure_running_times(
     tool.
     """
     reference_merge_results = reporter.read_csv(
-        reference_merge_results_file, conts.NamedMergeEvaluation
+        reference_merge_results_file, conts.MergeResult
     )
     merge_cmds = sorted(
         {merge_eval.merge_cmd for merge_eval in reference_merge_results}
@@ -315,42 +335,29 @@ def measure_running_times(
 
     LOGGER.info(f"Running benchmark with {num_repetitions} repetitions")
     running_times = run.run_running_time_benchmark(
-        reference_merge_results, merge_dirs_root, num_repetitions
+        reference_merge_results, base_merge_dir, num_repetitions
     )
 
     reporter.write_csv(data=running_times, container=conts.RunningTime, dst=output_file)
 
 
 def compose_csv_files(
-    merge_dirs_root: pathlib.Path, results_csv_name: str, output_file: pathlib.Path
+    base_merge_dir: pathlib.Path, results_csv_name: str, output_file: pathlib.Path
 ):
-    LOGGER.info(f"Collecting {results_csv_name} files from {merge_dirs_root}")
-    composed_frame = _read_results(merge_dirs_root, results_csv_name)
+    LOGGER.info(f"Collecting {results_csv_name} files from {base_merge_dir}")
+    composed_frame = _read_results(base_merge_dir, results_csv_name)
     composed_frame.to_csv(output_file, index=False)
     LOGGER.info(f"Composed results written to {output_file}")
 
 
-def _read_results(merge_dirs_root: pathlib.Path, results_csv_name: str) -> pd.DataFrame:
+def _read_results(base_merge_dir: pathlib.Path, results_csv_name: str) -> pd.DataFrame:
     frames = []
-    for dir_ in merge_dirs_root.iterdir():
-        if not dir_.is_dir():
-            continue
-        proj_name = dir_.name.replace("_", "/")
-        try:
-            frame = pd.read_csv(str(dir_ / results_csv_name), skipinitialspace=True)
-        except FileNotFoundError:
-            continue
-        frames.append(_prepend_uniform_column(frame, "project", proj_name))
+    matching_files = base_merge_dir.rglob(results_csv_name)
+    for file in matching_files:
+        frame = pd.read_csv(file, skipinitialspace=True)
+        frames.append(frame)
+
     return pd.concat(frames)
-
-
-def _prepend_uniform_column(
-    frame: pd.DataFrame, column_name: str, value: str
-) -> pd.DataFrame:
-    frame[column_name] = value
-    cols = frame.columns.to_list()
-    cols = cols[-1:] + cols[:-1]
-    return frame[cols]
 
 
 def num_core_contributors(repo_name: str, github_user: Optional[str], threshold: float):
@@ -369,7 +376,7 @@ def _run_file_merges(
     num_merges: Optional[int],
     expected_merge_scenarios: Optional[List[conts.SerializableMergeScenario]],
     base_merge_dir: pathlib.Path = pathlib.Path("merge_directory"),
-) -> (Iterable[conts.MergeEvaluation], List[conts.FileMerge]):
+) -> Tuple[Iterable[conts.MergeResult], List[conts.FileMerge], List[pathlib.Path]]:
     repo = _get_repo(repo_name, github_user)
     merge_scenarios = _get_merge_scenarios(repo, expected_merge_scenarios)
 
@@ -379,7 +386,9 @@ def _run_file_merges(
     file_merges = list(gitutils.extract_all_conflicting_files(repo, merge_scenarios))[
         :num_merges
     ]
-    merge_dirs = fileutils.create_merge_dirs(base_merge_dir, file_merges)
+    merge_dirs = fileutils.create_merge_dirs(
+        github_user, repo_name, base_merge_dir, file_merges
+    )
 
     LOGGER.info(f"Extracted {len(merge_dirs)} file merges")
 
@@ -407,3 +416,16 @@ def _get_merge_scenarios(
         if serializable_scenarios is not None
         else gitutils.extract_merge_scenarios(repo)
     )
+
+
+def evaluate_file_merges(
+    reference_merge_results_file: pathlib.Path,
+    base_merge_dir: pathlib.Path,
+    output_file: pathlib.Path,
+):
+    """Run evaluations on already computed file merges."""
+    reference_merge_results = reporter.read_csv(
+        reference_merge_results_file, conts.MergeResult
+    )
+    frame = run.run_evaluations(reference_merge_results, base_merge_dir)
+    frame.to_csv(output_file, index=False)

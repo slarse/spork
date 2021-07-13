@@ -12,13 +12,13 @@ from typing import List, Iterable, Mapping
 
 import daiquiri
 
-from . import run
 from . import gitutils
 from . import fileutils
 from . import containers as conts
 from . import diffutils
 
 LOGGER = daiquiri.getLogger(__name__)
+
 
 @dataclasses.dataclass(frozen=True)
 class MergeConflict:
@@ -75,17 +75,18 @@ def extract_conflicts(path: pathlib.Path) -> List[MergeConflict]:
     return conflicts
 
 
-def evaluation_result(
-    merge_result: conts.MergeResult, base_merge_dir: pathlib.Path,
-):
+def evaluate_file_merge(
+    merge_result: conts.MergeResult,
+    base_merge_dir: pathlib.Path,
+) -> conts.MergeEvaluation:
     """Gather evaluation results from the provided merge result."""
     git_diff_size = -1
     conflict_size = 0
     num_conflicts = 0
 
-    expected = merge_result.expected_file
+    expected = base_merge_dir / merge_result.expected_file
     expected_blob = gitutils.hash_object(expected)
-    replayed = merge_result.merge_file
+    replayed = base_merge_dir / merge_result.merge_file
 
     replayed_blob = ""
 
@@ -99,34 +100,24 @@ def evaluation_result(
             conflict_size = sum(c.num_lines for c in conflicts)
             num_conflicts = len(conflicts)
 
-    merge_dir = merge_result.merge_dir.relative_to(base_merge_dir)
-    merge_commit = fileutils.extract_commit_sha(merge_dir)
     return conts.MergeEvaluation(
-        merge_dir=merge_dir,
+        owner=merge_result.owner,
+        repo=merge_result.repo,
+        merge_commit=merge_result.merge_commit,
+        merge_dir=merge_result.merge_dir,
         merge_cmd=merge_result.merge_cmd,
         outcome=merge_result.outcome,
         git_diff_size=git_diff_size,
         conflict_size=conflict_size,
         num_conflicts=num_conflicts,
         runtime=merge_result.runtime,
-        merge_commit=merge_commit,
-        base_blob=gitutils.hash_object(merge_result.base_file),
-        left_blob=gitutils.hash_object(merge_result.left_file),
-        right_blob=gitutils.hash_object(merge_result.right_file),
+        base_blob=gitutils.hash_object(base_merge_dir / merge_result.base_file),
+        left_blob=gitutils.hash_object(base_merge_dir / merge_result.left_file),
+        right_blob=gitutils.hash_object(base_merge_dir / merge_result.right_file),
         expected_blob=expected_blob,
         replayed_blob=replayed_blob,
     )
 
-
-def run_and_evaluate(
-    merge_dirs: Iterable[pathlib.Path],
-    merge_commands: Iterable[str],
-    base_merge_dir: pathlib.Path,
-) -> Iterable[conts.MergeEvaluation]:
-    for merge_dir in merge_dirs:
-        for merge_cmd in merge_commands:
-            merge_result = run.run_individual_file_merge(merge_dir, merge_cmd)
-            yield evaluation_result(merge_result, base_merge_dir)
 
 def gather_java_blob_metainfos(
     merge_dirs: List[pathlib.Path],
@@ -143,7 +134,5 @@ def gather_java_blob_metainfos(
         )
         for file, sha in new_java_files:
             num_lines = fileutils.count_lines(file)
-            metainfos[sha] = conts.JavaBlobMetainfo(
-                hexsha=sha, num_lines=num_lines
-            )
+            metainfos[sha] = conts.JavaBlobMetainfo(hexsha=sha, num_lines=num_lines)
     return list(metainfos.values())

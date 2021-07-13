@@ -15,18 +15,20 @@ from typing import List, Generator, Iterable, Tuple, Optional, Iterator
 
 import git
 import daiquiri
+import pandas as pd
 
 from . import gitutils
 from . import fileutils
 from . import containers as conts
 from . import javautils
 from . import procutils
+from . import evaluate
 
 LOGGER = daiquiri.getLogger(__name__)
 
 
 def run_file_merges(
-    file_merge_dirs: List[pathlib.Path], merge_cmd: str
+    file_merge_dirs: List[pathlib.Path], merge_commands: str
 ) -> Iterable[conts.MergeResult]:
     """Run the file merges in the provided directories and put the output in a
     file called `merge_cmd`.java.
@@ -35,17 +37,20 @@ def run_file_merges(
         file_merge_dirs: A list of directories with file merge scenarios. Each
             directory must contain Base.java, Left.java, Right.java and
             Expected.java
-        merge_cmd: The merge command to execute. Will be called as
+        merge_commands: The merge commands to execute. Will be called as
             `merge_cmd Left.java Base.java Right.java -o merge_cmd.java`.
     Returns:
         A generator that yields one conts.MergeResult per merge directory.
     """
-    yield from _run_file_merges(file_merge_dirs, merge_cmd)
+    yield from (
+        run_individual_file_merge(merge_dir, merge_cmd)
+        for merge_dir, merge_cmd in itertools.product(file_merge_dirs, merge_commands)
+    )
 
 
 def run_individual_file_merge(
     merge_dir: pathlib.Path, merge_cmd: str
-) -> conts.MergeResult:
+) -> conts.InternalMergeResult:
     """Run a single file merge using the specified merge command.
 
     Args:
@@ -83,7 +88,8 @@ def run_individual_file_merge(
         expected=expected,
         merge=merge_file,
     )
-    return conts.MergeResult(
+    return conts.InternalMergeResult(
+        merge_commit=fileutils.extract_commit_sha(merge_dir),
         merge_dir=merge_dir,
         merge_file=merge_file,
         base_file=base,
@@ -96,7 +102,9 @@ def run_individual_file_merge(
     )
 
 
-def _run_file_merges(file_merge_dirs: List[pathlib.Path], merge_cmd: str) -> Iterable:
+def _run_file_merges(
+    file_merge_dirs: List[pathlib.Path], merge_cmd: str
+) -> Iterable[conts.InternalMergeResult]:
     for merge_dir in file_merge_dirs:
         yield run_individual_file_merge(merge_dir, merge_cmd)
 
@@ -116,13 +124,17 @@ def _run_file_merge(scenario_dir, merge_cmd, base, left, right, expected, merge)
     except subprocess.TimeoutExpired:
         LOGGER.exception(merge_cmd)
         timed_out = True
-        LOGGER.error(f"{merge_cmd} timed out")
+        LOGGER.error(
+            f"{merge_cmd} timed out on {scenario_dir.parent.name}/{scenario_dir.name}"
+        )
     except:
         LOGGER.exception(f"error running {merge_cmd}")
 
-    runtime = time.perf_counter() - start if not timed_out else gitutils.MERGE_TIMEOUT
+    runtime = time.perf_counter() - start
 
-    if not merge.is_file():
+    if timed_out:
+        return conts.MergeOutcome.TIMEOUT, runtime
+    elif not merge.is_file():
         LOGGER.error(
             f"{merge_cmd} failed to produce a merge file on {scenario_dir.parent.name}/{scenario_dir.name}"
         )
@@ -384,24 +396,24 @@ def is_testable(commit_sha: str, repo: git.Repo) -> bool:
 
 
 def run_running_time_benchmark(
-    reference_merge_results: List[conts.NamedMergeEvaluation],
-    merge_dirs_root: pathlib.Path,
+    reference_merge_results: List[conts.MergeResult],
+    base_merge_dir: pathlib.Path,
     num_repetitions: int,
 ) -> Iterable[conts.RunningTime]:
-    _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, merge_dirs_root)
+    _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, base_merge_dir)
     success_reference_merge_results = _filter_out_commits_with_fails(
         reference_merge_results
     )
     return (
-        _merge_and_verify_result(merge_dirs_root, reference_eval)
+        _replay_merge(base_merge_dir, reference_eval)
         for reference_eval in success_reference_merge_results
         for _ in range(0, num_repetitions)
     )
 
 
 def _filter_out_commits_with_fails(
-    reference_merge_results: List[conts.NamedMergeEvaluation],
-) -> List[conts.NamedMergeEvaluation]:
+    reference_merge_results: List[conts.MergeResult],
+) -> List[conts.MergeResult]:
     LOGGER.info("Filtering out commits where any tool has failure")
     commits_with_fails = {
         fileutils.extract_commit_sha(merge_result.merge_dir)
@@ -418,69 +430,54 @@ def _filter_out_commits_with_fails(
 
 
 def _verify_merge_scenarios_exist_in_merge_dir(
-    reference_merge_results: List[conts.NamedMergeEvaluation],
-    merge_dirs_root: pathlib.Path,
+    reference_merge_results: List[conts.MergeResult],
+    base_merge_dir: pathlib.Path,
 ):
     LOGGER.info("Validating merge directories against reference results ...")
-    for merge_eval in reference_merge_results:
-        merge_dir_abspath = _get_merge_dir_abspath(merge_dirs_root, merge_eval)
-        expected_filesnames = [
-            "Base.java",
-            "Left.java",
-            "Right.java",
-        ]
-        assert merge_dir_abspath.is_dir(), f"{merge_dir_abspath} does not exist"
-        _assert_matches_hash(merge_dir_abspath / "Base.java", merge_eval.base_blob)
-        _assert_matches_hash(merge_dir_abspath / "Left.java", merge_eval.left_blob)
-        _assert_matches_hash(merge_dir_abspath / "Right.java", merge_eval.right_blob)
+    for merge_result in reference_merge_results:
+        merge_dir_abspath = _get_merge_dir_abspath(base_merge_dir, merge_result)
+        assert (
+            base_merge_dir / merge_result.merge_dir
+        ).is_dir(), f"{merge_dir_abspath} is not a directory"
 
-        if merge_eval.outcome == conts.MergeOutcome.SUCCESS:
-            _assert_matches_hash(
-                merge_dir_abspath / f"{merge_eval.merge_cmd}.java",
-                merge_eval.replayed_blob,
-            )
+        expected_files = [
+            merge_result.base_file,
+            merge_result.left_file,
+            merge_result.right_file,
+        ] + (
+            [merge_result.merge_file]
+            if merge_result.outcome != conts.MergeOutcome.FAIL
+            else []
+        )
+
+        for relpath in expected_files:
+            assert (base_merge_dir / relpath).is_file()
 
     LOGGER.info("SUCCESS: All merge directories accounted for")
 
 
-def _merge_and_verify_result(
-    merge_dirs_root: pathlib.Path, reference_merge_eval: conts.NamedMergeEvaluation
+def _replay_merge(
+    base_merge_dir: pathlib.Path, reference_merge_result: conts.MergeResult
 ) -> conts.RunningTime:
     reference_merge_dir_abspath = _get_merge_dir_abspath(
-        merge_dirs_root, reference_merge_eval
+        base_merge_dir, reference_merge_result
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         workdir = pathlib.Path(tmpdir)
-        merge_dir = (
-            workdir
-            / reference_merge_dir_abspath.parent.parent.parent.name
-            / reference_merge_dir_abspath.parent.parent.name
-            / reference_merge_dir_abspath.parent.name
-            / reference_merge_dir_abspath.name
-        )
+        merge_dir = workdir / reference_merge_result.merge_dir
         merge_dir.mkdir(parents=True, exist_ok=False)
         _copy_merge_dir(src=reference_merge_dir_abspath, dst=merge_dir)
 
         with _in_workdir(workdir):
             merge_result = run_individual_file_merge(
-                merge_dir.relative_to(workdir), reference_merge_eval.merge_cmd
+                merge_dir.relative_to(workdir), reference_merge_result.merge_cmd
             )
 
-            if merge_result.outcome != conts.MergeOutcome.FAIL and (
-                gitutils.hash_object(merge_result.merge_file)
-                != reference_merge_eval.replayed_blob
-            ):
-                raise RuntimeError(
-                    f"Content mismatch in merge file for {reference_merge_eval}"
-                )
-
-    project = fileutils.extract_project_name(reference_merge_dir_abspath)
-    commit_sha = fileutils.extract_commit_sha(reference_merge_dir_abspath)
-
     return conts.RunningTime(
-        project=project,
-        commit_sha=commit_sha,
+        owner=reference_merge_result.owner,
+        repo=reference_merge_result.repo,
+        commit_sha=fileutils.extract_commit_sha(merge_dir),
         merge_dir=merge_result.merge_dir,
         merge_cmd=merge_result.merge_cmd,
         running_time=merge_result.runtime,
@@ -498,9 +495,29 @@ def _copy_merge_dir(src: pathlib.Path, dst: pathlib.Path):
 
 
 def _get_merge_dir_abspath(
-    merge_dirs_root: pathlib.Path, merge_eval: conts.NamedMergeEvaluation
+    base_merge_dir: pathlib.Path, merge_result: conts.MergeResult
 ) -> pathlib.Path:
-    return merge_dirs_root / merge_eval.project.replace("/", "_") / merge_eval.merge_dir
+    return base_merge_dir / merge_result.merge_dir
+
+
+def run_evaluations(
+    reference_merge_results: List[conts.MergeResult],
+    base_merge_dir: pathlib.Path,
+) -> pd.DataFrame:
+    """Run evaluations on performed file merges."""
+    _verify_merge_scenarios_exist_in_merge_dir(reference_merge_results, base_merge_dir)
+    return _evaluate(reference_merge_results, base_merge_dir)
+
+
+def _evaluate(
+    reference_merge_results: List[conts.MergeResult], base_merge_dir: pathlib.Path
+) -> pd.DataFrame:
+    evaluations = (
+        evaluate.evaluate_file_merge(merge_result, base_merge_dir)
+        for merge_result in reference_merge_results
+    )
+    evaluation_dicts = map(dataclasses.asdict, evaluations)
+    return pd.DataFrame(evaluation_dicts)
 
 
 @contextlib.contextmanager

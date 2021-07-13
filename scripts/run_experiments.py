@@ -88,7 +88,7 @@ def run_benchmarks_on_project(repo_name: str, github_user: str) -> int:
     Returns:
         The amount of merge scenarios that were used in the benchmark.
     """
-    base_merge_dir = BASE_EXPERIMENT_DIRECTORY / f"{github_user}_{repo_name}"
+    base_merge_dir = BASE_EXPERIMENT_DIRECTORY / github_user / repo_name
     base_merge_dir.mkdir(exist_ok=True, parents=True)
     merge_scenarios_path = base_merge_dir / "merge_scenarios.csv"
     file_merge_output = base_merge_dir / FILE_MERGE_RESULTS_FILENAME

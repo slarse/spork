@@ -130,8 +130,10 @@ class JavaBlobMetainfo:
 
 @dataclasses.dataclass(frozen=True, order=True)
 class MergeEvaluation:
-    merge_dir: pathlib.Path
+    owner: str
+    repo: str
     merge_commit: str
+    merge_dir: pathlib.Path
     base_blob: str
     left_blob: str
     right_blob: str
@@ -143,24 +145,6 @@ class MergeEvaluation:
     num_conflicts: int
     conflict_size: int
     runtime: float
-
-@dataclasses.dataclass(frozen=True, order=True)
-class NamedMergeEvaluation:
-    project: str
-    merge_dir: pathlib.Path
-    merge_commit: str
-    base_blob: str
-    left_blob: str
-    right_blob: str
-    expected_blob: str
-    replayed_blob: str
-    merge_cmd: str
-    outcome: str
-    git_diff_size: int
-    num_conflicts: int
-    conflict_size: int
-    runtime: float
-
 
 class Revision(enum.Enum):
     BASE = enum.auto()
@@ -169,14 +153,19 @@ class Revision(enum.Enum):
     ACTUAL_MERGE = enum.auto()
 
 
-class MergeOutcome:
+class MergeOutcome(enum.Enum):
     CONFLICT = "conflict"
     SUCCESS = "success"
     FAIL = "fail"
+    TIMEOUT = "timeout"
+
+    def __str__(self):
+        return str(self.value)
 
 
 @dataclasses.dataclass(frozen=True)
-class MergeResult:
+class InternalMergeResult:
+    merge_commit: str
     merge_dir: pathlib.Path
     merge_file: pathlib.Path
     base_file: pathlib.Path
@@ -185,15 +174,31 @@ class MergeResult:
     expected_file: pathlib.Path
     merge_cmd: str
     outcome: MergeOutcome
-    runtime: int
+    runtime: float
+
+@dataclasses.dataclass(frozen=True)
+class MergeResult:
+    owner: str
+    repo: str
+    merge_commit: str
+    merge_dir: pathlib.Path
+    merge_file: pathlib.Path
+    base_file: pathlib.Path
+    left_file: pathlib.Path
+    right_file: pathlib.Path
+    expected_file: pathlib.Path
+    merge_cmd: str
+    outcome: MergeOutcome
+    runtime: float
 
 @dataclasses.dataclass(frozen=True)
 class RunningTime:
-    project: str
+    owner: str
+    repo: str
     commit_sha: str
-    merge_dir: pathlib.Path
+    merge_dir: str
     merge_cmd: str
-    running_time: int
+    running_time: float
 
 @dataclasses.dataclass(frozen=True, order=True)
 class GitMergeResult:
@@ -206,29 +211,6 @@ class GitMergeResult:
     merge_ok: bool
     build_ok: bool
     eval_ok: bool
-
-
-@dataclasses.dataclass(frozen=True, order=True)
-class RunningTimeResult:
-    project: str
-    merge_commit: str
-    base_blob: str
-    left_blob: str
-    right_blob: str
-    runtime_ms: int
-    merge_cmd: str
-
-
-@dataclasses.dataclass(frozen=True, order=True)
-class MergeEvaluationStatistics:
-    project: str
-    merge_cmd: str
-    num_file_merges: int
-    num_success: int
-    num_conflict: int
-    num_fail: int
-    git_diff_avg_magn: int
-    git_diff_avg_acc: int
 
 
 @dataclasses.dataclass
