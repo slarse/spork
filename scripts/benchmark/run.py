@@ -1,3 +1,5 @@
+import multiprocessing
+import functools
 import subprocess
 import itertools
 import os
@@ -512,10 +514,14 @@ def run_evaluations(
 def _evaluate(
     reference_merge_results: List[conts.MergeResult], base_merge_dir: pathlib.Path
 ) -> pd.DataFrame:
-    evaluations = (
-        evaluate.evaluate_file_merge(merge_result, base_merge_dir)
-        for merge_result in reference_merge_results
+    num_procs = max(1, multiprocessing.cpu_count() // 2)  # assume SMT
+    LOGGER.info(f"Using {num_procs} CPUs")
+    pool = multiprocessing.Pool(num_procs)
+
+    evaluate_file_merge_with_basedir = functools.partial(
+        evaluate.evaluate_file_merge, base_merge_dir=base_merge_dir
     )
+    evaluations = pool.map(evaluate_file_merge_with_basedir, reference_merge_results)
     evaluation_dicts = map(dataclasses.asdict, evaluations)
     return pd.DataFrame(evaluation_dicts)
 
