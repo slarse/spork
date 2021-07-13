@@ -23,7 +23,6 @@ from . import run
 from . import gitutils
 from . import fileutils
 from . import reporter
-from . import mpi
 from . import containers as conts
 
 
@@ -35,7 +34,6 @@ def run_file_merges(
     github_user: Optional[str],
     eval_func: Callable,
     output_file: Optional[pathlib.Path],
-    use_mpi: bool,
     merge_scenarios: Optional[pathlib.Path],
     num_merges: Optional[int],
     gather_metainfo: bool,
@@ -52,7 +50,6 @@ def run_file_merges(
         repo_name=repo_name,
         github_user=github_user,
         num_merges=num_merges,
-        use_mpi=use_mpi,
         expected_merge_scenarios=expected_merge_scenarios,
         base_merge_dir=base_merge_dir,
     )
@@ -370,12 +367,9 @@ def _run_file_merges(
     repo_name: str,
     github_user: str,
     num_merges: Optional[int],
-    use_mpi: bool,
     expected_merge_scenarios: Optional[List[conts.SerializableMergeScenario]],
     base_merge_dir: pathlib.Path = pathlib.Path("merge_directory"),
 ) -> (Iterable[conts.MergeEvaluation], List[conts.FileMerge]):
-    assert not use_mpi or mpi.RANK == mpi.MASTER_RANK
-
     repo = _get_repo(repo_name, github_user)
     merge_scenarios = _get_merge_scenarios(repo, expected_merge_scenarios)
 
@@ -389,10 +383,7 @@ def _run_file_merges(
 
     LOGGER.info(f"Extracted {len(merge_dirs)} file merges")
 
-    if use_mpi:
-        evaluations = mpi.master(merge_dirs)
-    else:
-        evaluations = eval_func(merge_dirs)
+    evaluations = eval_func(merge_dirs)
 
     return evaluations, file_merges, merge_dirs
 

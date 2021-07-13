@@ -18,7 +18,6 @@ from . import run
 from . import gitutils
 from . import fileutils
 from . import reporter
-from . import mpi
 from . import command
 from . import containers as conts
 
@@ -91,15 +90,6 @@ def create_cli_parser():
         default=None,
     )
 
-    mpi_parser = argparse.ArgumentParser(add_help=False)
-    mpi_parser.add_argument(
-        "--mpi",
-        help="Run merge in parallell using MPI"
-        if mpi.MPI_ENABLED
-        else argparse.SUPPRESS,
-        action="store_true",
-    )
-
     base_merge_parser = argparse.ArgumentParser(
         add_help=False, parents=[base_output_parser]
     )
@@ -123,7 +113,7 @@ def create_cli_parser():
     file_merge_command = subparsers.add_parser(
         "run-file-merges",
         help="Test a merge tool by merging one file at a time.",
-        parents=[base_merge_parser, mpi_parser],
+        parents=[base_merge_parser],
     )
     file_merge_command.add_argument(
         "--merge-scenarios",
@@ -365,16 +355,11 @@ def main():
         base_merge_dir=args.base_merge_dir,
     )
 
-    if args.mpi and mpi.RANK != mpi.MASTER_RANK:
-        mpi.worker(eval_func, len(args.merge_commands))
-        return
-
     if args.command == "run-file-merges":
         command.run_file_merges(
             repo_name=args.repo,
             github_user=args.github_user,
             eval_func=eval_func,
-            use_mpi=args.mpi,
             merge_scenarios=args.merge_scenarios,
             num_merges=args.num_merges,
             gather_metainfo=args.gather_metainfo,
