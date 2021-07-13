@@ -16,13 +16,9 @@ from . import run
 from . import gitutils
 from . import fileutils
 from . import containers as conts
+from . import diffutils
 
 LOGGER = daiquiri.getLogger(__name__)
-
-GIT_DIFF_CMD = tuple(
-    "git diff --no-index --numstat --ignore-cr-at-eol --ignore-space-at-eol".split()
-)
-
 
 @dataclasses.dataclass(frozen=True)
 class MergeConflict:
@@ -39,69 +35,6 @@ class MergeConflict:
     def num_lines(self):
         """The amount of conflicting lines."""
         return len(self.left) + len(self.right)
-
-
-def git_diff_edit_script_size(
-    base_file: pathlib.Path, dest_file: pathlib.Path
-) -> int:
-    """Return the edit script size (insertions + deletions) for the diff
-    between the base and destination files, as reported by git-diff. See the
-    module constants for which exact arguments are used.
-
-    Args:
-        base_file: The base version of the file.
-        dest_file: The edited version of the file.
-    Returns:
-        The size of the edit script.
-    """
-    cmd = [*GIT_DIFF_CMD, str(base_file), str(dest_file)]
-    proc = subprocess.run(cmd, capture_output=True, timeout=10)
-
-    if not proc.stdout:
-        return 0
-
-    lines = proc.stdout.decode(sys.getdefaultencoding()).strip().split("\n")
-    assert len(lines) == 1
-
-    line = lines[0]
-    insertions, deletions, *_ = line.split()
-    return int(insertions) + int(deletions)
-
-
-def git_diff_edit_script(
-    base_file: pathlib.Path,
-    dest_file: pathlib.Path,
-    strip_metadata: bool = False,
-) -> List[str]:
-    """Return the edit script produced by git diff. Requires that the `git`
-    program is on the path.
-
-    Args:
-        base_file: The base version of the file.
-        dest_file: The edited version of the file.
-    Returns:
-        The edit script produced by git diff, ignoring carriege returns,
-        whitespace and blank lines.
-    """
-    git_diff = (
-        "git diff --ignore-cr-at-eol --ignore-all-space "
-        "--ignore-blank-lines --ignore-space-change --no-index -U0"
-    ).split()
-    cmd = [*git_diff, str(base_file), str(dest_file)]
-    proc = subprocess.run(cmd, shell=False, capture_output=True, timeout=10)
-
-    if proc.returncode == 0:
-        # zero exit code means there were no differences
-        return []
-
-    output = proc.stdout.decode(sys.getdefaultencoding())
-
-    lines = output.rstrip().split("\n")
-    if strip_metadata and lines:
-        # first 4 lines are metadata, lines starting with @@ is metadata
-        lines = [line for line in lines[4:] if not line.startswith("@@")]
-
-    return lines
 
 
 def extract_conflicts(path: pathlib.Path) -> List[MergeConflict]:
@@ -159,7 +92,7 @@ def evaluation_result(
     if merge_result.outcome != conts.MergeOutcome.FAIL:
         replayed_blob = gitutils.hash_object(replayed)
 
-        git_diff_size = git_diff_edit_script_size(expected, replayed)
+        git_diff_size = diffutils.git_diff_edit_script_size(expected, replayed)
 
         if merge_result.outcome == conts.MergeOutcome.CONFLICT:
             conflicts = extract_conflicts(replayed)
